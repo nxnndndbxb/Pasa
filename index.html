@@ -271,7 +271,7 @@
         }
 
         .password-container.has-strength input {
-            padding-right: 70px;
+            padding-right: 70px; /* Make space for password toggle and strength text if needed */
         }
 
 
@@ -1969,7 +1969,6 @@
             border-radius: var(--border-radius);
             color: var(--text-light);
             box-shadow: var(--shadow-hover);
-            /* animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), fadeOut 0.5s ease-in 3.5s forwards; */ /* Default auto-fade */
             animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards; /* Only slide in initially */
             display: flex;
             align-items: center;
@@ -3385,12 +3384,29 @@
         let lastEarningsUpdate = null;
         let earningsChartInstance = null;
         let referralMilestonesConfig = []; // To be loaded from Firebase
+        let urlReferralCode = null; // To store referral code from URL
 
+
+        // Function to get URL parameters
+        function getUrlParameter(name) {
+            name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+            const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+            const results = regex.exec(location.search);
+            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+        }
 
         // Initialize the app
         function init() {
+            urlReferralCode = getUrlParameter('ref'); // Get ref code on load
+            if (urlReferralCode) {
+                console.log("Referral code from URL:", urlReferralCode);
+                // If ref code exists, and no user is logged in (or auth state not yet determined),
+                // we'll attempt to show the register form. showAuthForm will handle applying the code.
+                // We defer this check until after initial auth check or if user explicitly clicks register.
+                // For now, just store it. If checkAuthState finds no user, it can decide to show reg form.
+            }
             setupEventListeners();
-            checkAuthState();
+            checkAuthState(); // This will determine initial UI (auth or app)
             loadReferralConfig(); // Load referral settings early
         }
 
@@ -3399,15 +3415,13 @@
                 const snapshot = await database.ref('admin/referralSettings/milestones').once('value');
                 if (snapshot.exists()) {
                     referralMilestonesConfig = snapshot.val();
-                    // Sort milestones by required referrals to ensure correct progression
                     if (Array.isArray(referralMilestonesConfig)) {
                        referralMilestonesConfig.sort((a, b) => a.requiredReferrals - b.requiredReferrals);
-                    } else { // If it's an object, convert to array and sort
+                    } else {
                         referralMilestonesConfig = Object.values(referralMilestonesConfig)
                                                         .sort((a, b) => a.requiredReferrals - b.requiredReferrals);
                     }
                 } else {
-                    // Default milestones if not set in Firebase
                     referralMilestonesConfig = [
                         { id: "milestone1", requiredReferrals: 3, rewardAmount: 50, name: "Bronze Referrer" },
                         { id: "milestone2", requiredReferrals: 7, rewardAmount: 150, name: "Silver Referrer" },
@@ -3417,7 +3431,7 @@
                 }
             } catch (error) {
                 console.error("Error loading referral config:", error);
-                 referralMilestonesConfig = [ // Fallback defaults
+                 referralMilestonesConfig = [
                         { id: "milestone1", requiredReferrals: 3, rewardAmount: 50, name: "Bronze Referrer" },
                         { id: "milestone2", requiredReferrals: 7, rewardAmount: 150, name: "Silver Referrer" },
                         { id: "milestone3", requiredReferrals: 15, rewardAmount: 350, name: "Gold Referrer" }
@@ -3440,14 +3454,14 @@
             submitReset.addEventListener('click', resetUserPassword);
 
             verifyContinue.addEventListener('click', () => {
-                authContainer.classList.remove('hidden'); // This might be redundant if already visible
+                authContainer.classList.remove('hidden');
                 emailVerifyNotice.classList.add('hidden');
                 if (currentUser) {
                     currentUser.reload().then(() => {
                         if (currentUser.emailVerified) checkAuthState();
                         else showNotification('Email not yet verified. Please check your inbox.', 'warning');
                     });
-                } else { // Fallback if currentUser is somehow null
+                } else {
                     showAuthForm(loginFormEl);
                 }
             });
@@ -3463,7 +3477,6 @@
                 termsModal.classList.add('hidden');
             });
 
-            // Modal closing on backdrop click
             document.addEventListener('click', (event) => {
                 if (event.target === termsModal) {
                     termsModal.classList.remove('active');
@@ -3526,7 +3539,7 @@
                 fileUploadInput.addEventListener('change', function() {
                     const fileNameSpan = document.getElementById('file-name');
                     const screenshotModal = document.getElementById('screenshot-modal');
-                    const screenshotPreview = document.getElementById('screenshot-preview');
+                    const screenshotPreview = document.getElementById('screenshot-preview'); // Corrected to use ID
 
                     if (this.files.length > 0) {
                         fileNameSpan.textContent = this.files[0].name;
@@ -3552,7 +3565,7 @@
                 screenshotCancelBtn.addEventListener('click', () => {
                     screenshotModalEl.classList.remove('active');
                     screenshotModalEl.classList.add('hidden');
-                    if(fileUploadInput) fileUploadInput.value = ''; // Clear file input
+                    if(fileUploadInput) fileUploadInput.value = '';
                     const fileNameSpan = document.getElementById('file-name');
                     if(fileNameSpan) fileNameSpan.textContent = 'No file chosen';
                     document.getElementById('screenshot-preview').innerHTML = '<p>No image selected or preview not available.</p>';
@@ -3562,7 +3575,6 @@
                 screenshotConfirmBtn.addEventListener('click', () => {
                     screenshotModalEl.classList.remove('active');
                     screenshotModalEl.classList.add('hidden');
-                    // File is already selected, user just confirmed preview
                 });
             }
 
@@ -3597,8 +3609,20 @@
             } else if (formToShow === null || formToShow === undefined) { // No form shown, means show options
                  if (authOptions) authOptions.classList.remove('hidden');
             }
-            // emailVerifyNotice does not hide authOptions by default
+
+            // Apply URL referral code if register form is shown
+            if (formToShow === registerFormEl && urlReferralCode) {
+                const regInviteInput = document.getElementById('reg-invite');
+                if (regInviteInput) {
+                    regInviteInput.value = urlReferralCode;
+                    // Optional: Make it read-only or provide visual feedback
+                    // regInviteInput.readOnly = true;
+                    // regInviteInput.style.borderColor = 'var(--primary-color)'; // Example style
+                    // showNotification(`Invitation code ${urlReferralCode} applied.`, 'info');
+                }
+            }
         }
+
 
         function navigateToPage(pageName) {
             pages.forEach(p => p.classList.add('hidden'));
@@ -3606,16 +3630,15 @@
             if (targetPage) targetPage.classList.remove('hidden');
             else {
                 console.error(`Page with ID ${pageName}-page not found.`);
-                document.getElementById('home-page').classList.remove('hidden'); // Fallback to home
+                document.getElementById('home-page').classList.remove('hidden');
             }
 
             menuItems.forEach(item => item.classList.remove('active'));
             const activeMenuItem = document.querySelector(`.menu-item[data-page="${pageName}"]`);
             if (activeMenuItem) activeMenuItem.classList.add('active');
 
-            sideMenu.classList.remove('active'); // Close menu on navigation
+            sideMenu.classList.remove('active');
 
-            // Specific page initializations
             if (pageName === 'team') initTeamPage();
             else if (pageName === 'plans') initPlansPage();
             else if (pageName === 'deposit') initDepositPage();
@@ -3635,8 +3658,7 @@
                         hideLoading();
                         return;
                     }
-                    loadUserData(user.uid); // This will handle showing the app container
-                    // Hide auth container elements explicitly after successful verification path
+                    loadUserData(user.uid);
                     authContainer.classList.add('hidden');
                     document.getElementById('auth-options').classList.add('hidden');
                     emailVerifyNotice.classList.add('hidden');
@@ -3645,10 +3667,16 @@
                     currentUser = null;
                     userData = null;
                     authContainer.classList.remove('hidden');
-                    document.getElementById('auth-options').classList.remove('hidden');
+                    // document.getElementById('auth-options').classList.remove('hidden'); // This is handled by showAuthForm
                     appContainer.classList.add('hidden');
-                    emailVerifyNotice.classList.add('hidden'); // Ensure verify notice is hidden on logout
-                    showAuthForm(loginFormEl); // Show login form by default on logout
+                    emailVerifyNotice.classList.add('hidden');
+
+                    if (urlReferralCode) { // If user came via referral link and is logged out/new
+                        showAuthForm(registerFormEl); // Show registration form, which will prefill code
+                    } else {
+                        showAuthForm(loginFormEl); // Default to login form
+                    }
+
                     if (earningsInterval) clearInterval(earningsInterval);
                     earningsInterval = null;
                     hideLoading();
@@ -3657,19 +3685,18 @@
         }
 
         function showEmailVerificationNotice(email) {
-            authContainer.classList.remove('hidden'); // Ensure auth container is visible
+            authContainer.classList.remove('hidden');
             [registerFormEl, loginFormEl, resetFormEl].forEach(form => {
                 if(form) form.classList.add('hidden');
             });
-            document.getElementById('auth-options').classList.add('hidden'); // Hide login/register buttons
+            document.getElementById('auth-options').classList.add('hidden');
 
             emailVerifyNotice.classList.remove('hidden');
             if (verifyEmailAddressEl) verifyEmailAddressEl.textContent = email;
 
-            // Show continue button after a delay
             setTimeout(() => {
                 if (verifyContinue) verifyContinue.classList.remove('hidden');
-            }, 5000); // 5 seconds
+            }, 5000);
         }
 
         function resendVerificationEmail() {
@@ -3679,7 +3706,7 @@
             }
             const resendBtnTextSpan = resendVerify.querySelector('.btn-text') || resendVerify;
             const originalText = resendBtnTextSpan.textContent;
-            showLoadingButton(resendVerify, true, "Sending..."); // Assuming resendVerify can be a button
+            showLoadingButton(resendVerify, true, "Sending...");
 
             auth.currentUser.sendEmailVerification()
                 .then(() => showNotification('Verification email sent! Check your inbox and spam folder.', 'success'))
@@ -3693,24 +3720,22 @@
                 userData = snapshot.val();
                 if (userData) {
                     updateUI();
-                    updateBonusStatusDisplay(); // For registration bonus
-                    startEarningsCalculation(); // Recalculate/check earnings state
-                    updateReferralMilestonesUI(); // Update referral UI after data load
-                    // Show success notification only on initial login, not every data update
+                    updateBonusStatusDisplay();
+                    startEarningsCalculation();
+                    updateReferralMilestonesUI();
                     if (!authContainer.classList.contains('hidden') && appContainer.classList.contains('hidden')) {
-                        // This implies it's the transition from auth to app
                          showNotification('Login successful!', 'success');
                          appContainer.classList.remove('hidden');
-                         authContainer.classList.add('hidden'); // Explicitly hide auth container
+                         authContainer.classList.add('hidden');
                     }
                 } else {
                     console.warn("User data not found for UID:", userId, "Logging out.");
-                    logoutUser(); // If user data is missing, log out to prevent errors
+                    logoutUser();
                 }
                 hideLoading();
             }, error => {
                 showNotification('Error loading user data: ' + error.message, 'error');
-                logoutUser(); // Logout on critical data load error
+                logoutUser();
                 hideLoading();
             });
         }
@@ -3718,16 +3743,16 @@
         function refreshUserBalance() {
             if (!currentUser) return;
             const refreshIcon = refreshBalance.classList.contains('fa-sync-alt') ? refreshBalance : refreshBalance.querySelector('.fa-sync-alt');
-            if (refreshIcon) refreshIcon.classList.add('fa-spin'); // Add spin animation
+            if (refreshIcon) refreshIcon.classList.add('fa-spin');
 
             database.ref('users/' + currentUser.uid).once('value')
                 .then(snapshot => {
-                    userData = snapshot.val(); // Update local userData
+                    userData = snapshot.val();
                     if (userData) {
-                        updateUI(); // This will call updateBalanceDisplay
-                        updateBonusStatusDisplay(); // For registration bonus
-                        updateReferralMilestonesUI(); // Also update milestones
-                        startEarningsCalculation(); // Re-evaluate earnings logic after refresh
+                        updateUI();
+                        updateBonusStatusDisplay();
+                        updateReferralMilestonesUI();
+                        startEarningsCalculation();
                         showNotification('Balance refreshed!', 'success');
                     } else {
                         showNotification('Could not refresh data.', 'error');
@@ -3735,7 +3760,7 @@
                 })
                 .catch(error => showNotification('Error refreshing balance: ' + error.message, 'error'))
                 .finally(() => {
-                    if (refreshIcon) refreshIcon.classList.remove('fa-spin'); // Remove spin
+                    if (refreshIcon) refreshIcon.classList.remove('fa-spin');
                 });
         }
 
@@ -3746,12 +3771,11 @@
             document.getElementById('menu-user-email').textContent = currentUser.email;
             document.getElementById('menu-user-img').src = userData.profileImage || "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
 
-            updateBalanceDisplay(); // Centralized balance update
+            updateBalanceDisplay();
 
             const activePlanName = userData.activePlan ? `${getPlanName(userData.activePlan)} (${userData.activePlan} Rs)` : 'None';
             document.getElementById('active-plan').textContent = activePlanName;
 
-            // Daily earnings display based on 25% if plan is active and not cancelled
             const dailyEarningsVal = (userData.activePlan && !userData.planCancelledDate) ? (userData.activePlan * 0.25) : 0;
             document.getElementById('daily-earnings').textContent = `${dailyEarningsVal.toFixed(2)} Rs`;
 
@@ -3767,7 +3791,6 @@
             let todayReferralCommission = 0;
             if (userData.referralHistory) {
                 Object.values(userData.referralHistory).forEach(entry => {
-                    // Ensure entry.date is a string and valid before calling startsWith
                     if (entry.type === 'commission' && typeof entry.date === 'string' && entry.date.startsWith(today)) {
                         todayReferralCommission += entry.amount || 0;
                     }
@@ -3775,11 +3798,10 @@
             }
             document.getElementById('today-referral-earnings').textContent = `${todayReferralCommission.toFixed(2)} Rs`;
 
-            // User rank - Assuming rank is directly stored or calculated elsewhere
             const rankDisplay = document.getElementById('user-rank-badge').querySelector('span');
             if (rankDisplay) rankDisplay.textContent = `#${userData.rank || 'N/A'}`;
 
-            let level = "Standard"; // Default level
+            let level = "Standard";
             if (userData.activePlan >= 8400) level = "Diamond Investor";
             else if (userData.activePlan >= 5600) level = "Platinum Investor";
             else if (userData.activePlan >= 2800) level = "Gold Investor";
@@ -3787,15 +3809,13 @@
             else if (userData.activePlan >= 550) level = "Basic Investor";
             document.getElementById('user-level-badge').textContent = level;
 
-            showActivePlanManagement(); // Update active plan management UI
+            showActivePlanManagement();
 
-            // Ensure current page specific UI is updated if necessary
             const currentPageId = document.querySelector('.page:not(.hidden)')?.id;
             if (currentPageId) {
                 const pageName = currentPageId.replace('-page', '');
                 if (pageName === 'plans') initPlansPage();
                 else if (pageName === 'withdraw') initWithdrawPage();
-                // Add other pages that need UI refresh on data change
             }
         }
 
@@ -3811,7 +3831,7 @@
 
             const bonus = userData.registrationBonus;
             bonusContainer.classList.remove('hidden');
-            bonusIcon.className = 'fas'; // Reset icon classes
+            bonusIcon.className = 'fas';
 
             if (bonus.status === 'pending') {
                 bonusMessage.textContent = `Activate any plan to unlock and credit your ${bonus.amount} PKR registration bonus to your earnings!`;
@@ -3824,13 +3844,13 @@
                 bonusIcon.style.color = 'var(--success-color)';
                 bonusContainer.style.borderColor = 'var(--success-color)';
             } else {
-                bonusContainer.classList.add('hidden'); // Hide if status is unknown
+                bonusContainer.classList.add('hidden');
             }
         }
 
 
         function getPlanName(amount) {
-            amount = parseInt(amount); // Ensure amount is number
+            amount = parseInt(amount);
             if (amount === 550) return "Basic Plan";
             if (amount === 1400) return "Silver Plan";
             if (amount === 2800) return "Gold Plan";
@@ -3842,12 +3862,11 @@
         function updateBalanceDisplay() {
             if (!userData) return;
             const currentBalance = userData.balance || 0;
-            // Earnings now represent accumulated, withdrawable funds (plan earnings, commissions, milestone rewards, credited registration bonus)
             const currentEarnings = userData.earnings || 0;
-            const totalAvailable = currentBalance + currentEarnings; // Total withdrawable is sum of general balance and earnings
+            const totalAvailable = currentBalance + currentEarnings;
 
             document.getElementById('user-balance').textContent = `${totalAvailable.toFixed(2)} Rs`;
-            document.getElementById('total-balance').textContent = `${totalAvailable.toFixed(2)} Rs`; // Home page stat
+            document.getElementById('total-balance').textContent = `${totalAvailable.toFixed(2)} Rs`;
 
             const withdrawAvailEl = document.getElementById('withdraw-available-balance');
             if (withdrawAvailEl) withdrawAvailEl.textContent = `${totalAvailable.toFixed(2)} Rs`;
@@ -3859,7 +3878,7 @@
             const password = document.getElementById('reg-password').value;
             const confirmPassword = document.getElementById('reg-confirm-password').value;
             const phone = document.getElementById('reg-phone').value.trim();
-            const referredByInviteCode = document.getElementById('reg-invite').value.trim();
+            const referredByInviteCode = document.getElementById('reg-invite').value.trim(); // This might be pre-filled
             const termsAccepted = document.getElementById('reg-terms').checked;
 
             if (!name || !email || !password || !confirmPassword || !phone) {
@@ -3886,37 +3905,24 @@
 
             auth.createUserWithEmailAndPassword(email, password)
                 .then(userCredential => {
-                    // Send verification email first
                     return userCredential.user.sendEmailVerification().then(() => userCredential.user);
                 })
                 .then(user => {
                     const newUserData = {
                         name: name, email: email, phone: phone,
-                        balance: 0,
-                        earnings: 0,
-                        activePlan: null,
-                        originalPlanAmount: null, // For principal return logic
-                        planStartDate: null,
-                        originalPlanEndDate: null, // For principal return logic
-                        planCancelledDate: null, // New field
-                        principalReturned: false, // New field
-                        lastEarningsUpdate: null,
-                        hasPurchasedFirstPlan: false,
+                        balance: 0, earnings: 0,
+                        activePlan: null, originalPlanAmount: null, planStartDate: null,
+                        originalPlanEndDate: null, planCancelledDate: null, principalReturned: false,
+                        lastEarningsUpdate: null, hasPurchasedFirstPlan: false,
                         inviteCode: generateInviteCode(),
                         referredByInviteCode: referredByInviteCode || null,
                         referredByUid: null,
                         registrationDate: new Date().toISOString(),
                         lastLogin: new Date().toISOString(),
                         rank: "New",
-                        investingReferralsCount: 0,
-                        referralCommissionTotal: 0,
-                        referralLevel: "Starter",
-                        achievedMilestones: {},
-                        registrationBonus: {
-                            amount: 250, // Standard bonus amount
-                            status: 'pending', // 'pending', 'credited'
-                            awardedDate: null // Will be set when credited
-                        },
+                        investingReferralsCount: 0, referralCommissionTotal: 0,
+                        referralLevel: "Starter", achievedMilestones: {},
+                        registrationBonus: { amount: 250, status: 'pending', awardedDate: null },
                         firstWithdrawalMade: false
                     };
 
@@ -3949,17 +3955,16 @@
                 if (snapshot.exists()) {
                     const referrerUid = Object.keys(snapshot.val())[0];
                     await database.ref(`users/${newUserId}/referredByUid`).set(referrerUid);
-                    // Add to referrer's list for their own tracking (optional detail)
                     await database.ref(`users/${referrerUid}/referralsList/${newUserId}`).set({
                         name: newUserName,
-                        email: document.getElementById('reg-email').value, // Get email from form
+                        email: document.getElementById('reg-email').value,
                         date: new Date().toISOString(),
-                        status: "registered" // Initial status
+                        status: "registered"
                     });
                     console.log(`User ${newUserId} linked to referrer ${referrerUid}`);
                 } else {
                     console.warn("Referrer with invite code not found:", referrerInviteCode);
-                    await database.ref(`users/${newUserId}/referredByInviteCode`).set(null); // Clear if invalid
+                    await database.ref(`users/${newUserId}/referredByInviteCode`).set(null);
                 }
             } catch (error) {
                 console.error("Error linking referrer:", error);
@@ -3974,7 +3979,6 @@
             return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).toLowerCase());
         }
         function validatePassword(password) {
-            // At least 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
             return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&._-])[A-Za-z\d@$!%*?&._-]{8,}$/.test(password);
         }
 
@@ -3985,18 +3989,18 @@
 
             let score = 0;
             if (!password) {
-                strengthBars.forEach(bar => bar.className = 'strength-bar'); // Reset class
+                strengthBars.forEach(bar => bar.className = 'strength-bar');
                 strengthText.textContent = '';
                 return;
             }
 
             if (password.length >= 8) score++;
-            if (password.length >= 10) score++; // Bonus for longer
+            if (password.length >= 10) score++;
             if (/[A-Z]/.test(password)) score++;
             if (/[0-9]/.test(password)) score++;
-            if (/[@$!%*?&._-]/.test(password)) score++; // Expanded special chars
+            if (/[@$!%*?&._-]/.test(password)) score++;
 
-            strengthBars.forEach(bar => bar.className = 'strength-bar'); // Reset classes
+            strengthBars.forEach(bar => bar.className = 'strength-bar');
 
             if (score <= 2) {
                 strengthBars[0].classList.add('weak');
@@ -4018,9 +4022,6 @@
             showLoadingButton(submitLogin, true);
             auth.signInWithEmailAndPassword(email, password)
                 .then(userCredential => {
-                    // checkAuthState will handle the rest if email is verified
-                    // If not verified, checkAuthState will show the verification notice
-                    // Update lastLogin after successful sign-in attempt, before full data load
                     return database.ref('users/' + userCredential.user.uid).update({ lastLogin: new Date().toISOString() });
                 })
                 .catch(error => {
@@ -4040,7 +4041,7 @@
             auth.sendPasswordResetEmail(email)
                 .then(() => {
                     showNotification('Password reset email sent! Check your inbox.', 'success');
-                    showAuthForm(loginFormEl); // Switch back to login form
+                    showAuthForm(loginFormEl);
                 })
                 .catch(error => showNotification(error.message, 'error'))
                 .finally(() => showLoadingButton(submitReset, false, "Send Reset Link"));
@@ -4050,12 +4051,10 @@
             showLoading();
             auth.signOut()
                 .then(() => {
-                    // checkAuthState will be triggered and handle UI update to login screen
                     console.log("User logged out.");
                 })
                 .catch(error => showNotification(error.message, 'error'))
                 .finally(() => {
-                    // Ensure loading is hidden even if checkAuthState is slow or fails
                      hideLoading();
                 });
         }
@@ -4063,16 +4062,14 @@
         function showLoadingButton(buttonElement, isLoading, defaultText = "Submit") {
             const btnText = buttonElement.querySelector('.btn-text');
             const btnLoader = buttonElement.querySelector('.btn-loader');
-
-            // For elements like resendVerify which might not have .btn-text/.btn-loader
             let targetTextElement = btnText || buttonElement;
 
             if (isLoading) {
                 if(btnText) btnText.classList.add('hidden');
-                else targetTextElement.dataset.originalText = targetTextElement.textContent; // Store original for non-structured buttons
+                else targetTextElement.dataset.originalText = targetTextElement.textContent;
 
                 if(btnLoader) btnLoader.classList.remove('hidden');
-                else targetTextElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; // Simple loader for others
+                else targetTextElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
                 buttonElement.disabled = true;
             } else {
@@ -4088,7 +4085,7 @@
             }
         }
 
-        function showNotification(message, type, duration = 4000) { // Added duration parameter
+        function showNotification(message, type, duration = 4000) {
             const notification = document.createElement('div');
             notification.className = `notification ${type} animate__animated`;
             let iconClass;
@@ -4102,16 +4099,14 @@
             notification.innerHTML = `<i class="fas ${iconClass}"></i><span>${message}</span>`;
             notificationContainer.appendChild(notification);
 
-            // Auto-remove after duration
             setTimeout(() => {
-                notification.classList.add('fade-out'); // Add class to trigger fadeOut animation
-                // Remove from DOM after fadeOut animation completes
+                notification.classList.add('fade-out');
                 notification.addEventListener('animationend', () => {
                     if (notification.classList.contains('fade-out')) {
                         notification.remove();
                     }
                 });
-            }, duration - 500); // Start fadeOut 0.5s before total duration
+            }, duration - 500);
         }
 
 
@@ -4130,7 +4125,7 @@
         function showSlides(n) {
             const slides = document.getElementsByClassName("slide");
             const dots = document.getElementsByClassName("dot");
-            if (slides.length === 0) return; // No slides to show
+            if (slides.length === 0) return;
 
             if (n > slides.length) slideIndex = 1;
             if (n < 1) slideIndex = slides.length;
@@ -4138,10 +4133,10 @@
             for (let i = 0; i < dots.length; i++) dots[i].className = dots[i].className.replace(" active-dot", "");
 
             slides[slideIndex-1].style.display = "block";
-            if (dots.length >= slideIndex) { // Check if dot exists
+            if (dots.length >= slideIndex) {
                  dots[slideIndex-1].className += " active-dot";
             }
-            slideshowTimeout = setTimeout(() => plusSlides(1), 5000); // Auto slide
+            slideshowTimeout = setTimeout(() => plusSlides(1), 5000);
         }
 
         function initPlanButtons() {
@@ -4153,7 +4148,6 @@
         }
 
         function initPlansPage() {
-             // Update button states based on whether user has an active plan OR a cancelled plan whose term isn't over
             if (userData && (userData.activePlan || (userData.planCancelledDate && !userData.principalReturned))) {
                 document.querySelectorAll('.buy-plan-btn').forEach(btn => {
                     btn.disabled = true;
@@ -4165,7 +4159,7 @@
                     if (btnText) btnText.textContent = message;
                     else btn.textContent = message;
                 });
-            } else { // No active plan, and no pending principal return from a cancelled one
+            } else {
                 document.querySelectorAll('.buy-plan-btn').forEach(btn => {
                     btn.disabled = false;
                     const btnText = btn.querySelector('.btn-text');
@@ -4179,14 +4173,12 @@
             if (!currentUser || !userData) {
                 showNotification('Please login to purchase a plan.', 'error'); return;
             }
-            // Use combined balance for purchase
             const totalAvailableForPurchase = (userData.balance || 0) + (userData.earnings || 0);
             if (totalAvailableForPurchase < planAmount) {
                 showNotification('Insufficient balance. Please deposit funds.', 'error'); return;
             }
-             // Check if there's an active plan OR if a plan was cancelled but its term isn't over yet (principal not yet returned)
             if (userData.activePlan || (userData.planCancelledDate && !userData.principalReturned)) {
-                showNotification('You currently have a plan processing (active or awaiting principal return). You can purchase a new plan once the current one fully concludes.', 'error', 6000); return;
+                showNotification('You currently have a plan processing. You can purchase a new plan once the current one fully concludes.', 'error', 6000); return;
             }
 
             showConfirmationModal(
@@ -4200,7 +4192,6 @@
                     let bonusCreditedThisTime = false;
                     let bonusAmountToCredit = 0;
 
-                    // Prioritize deducting from earnings, then balance for plan cost
                     if (newEarnings >= planAmount) {
                         amountFromEarnings = planAmount;
                         newEarnings -= planAmount;
@@ -4217,16 +4208,13 @@
                     originalPlanEndDateObj.setDate(originalPlanEndDateObj.getDate() + 30);
 
                     const updates = {
-                        balance: newBalance,
-                        earnings: newEarnings,
-                        activePlan: planAmount,
-                        originalPlanAmount: planAmount,
+                        balance: newBalance, earnings: newEarnings,
+                        activePlan: planAmount, originalPlanAmount: planAmount,
                         planStartDate: planStartDateObj.toISOString(),
                         originalPlanEndDate: originalPlanEndDateObj.toISOString(),
-                        planCancelledDate: null, // Explicitly reset
-                        principalReturned: false, // Explicitly reset
+                        planCancelledDate: null, principalReturned: false,
                         lastEarningsUpdate: planStartDateObj.toISOString(),
-                        hasPurchasedFirstPlan: userData.hasPurchasedFirstPlan || false // Preserve existing, or set if first time
+                        hasPurchasedFirstPlan: userData.hasPurchasedFirstPlan || false
                     };
 
                     if (!userData.hasPurchasedFirstPlan && userData.registrationBonus && userData.registrationBonus.status === 'pending') {
@@ -4237,7 +4225,7 @@
                             status: 'credited',
                             awardedDate: new Date().toISOString()
                         };
-                        updates.hasPurchasedFirstPlan = true; // Set it true here
+                        updates.hasPurchasedFirstPlan = true;
                         bonusCreditedThisTime = true;
                     }
 
@@ -4246,32 +4234,26 @@
                         await database.ref('users/' + currentUser.uid).update(updates);
 
                         const logEntry = {
-                            type: 'plan_purchase',
-                            amount: planAmount,
-                            planName: getPlanName(planAmount),
+                            type: 'plan_purchase', amount: planAmount, planName: getPlanName(planAmount),
                             date: new Date().toISOString(),
-                            deductedFromBalance: amountFromBalance,
-                            deductedFromEarnings: amountFromEarnings
+                            deductedFromBalance: amountFromBalance, deductedFromEarnings: amountFromEarnings
                         };
                         await database.ref(`users/${currentUser.uid}/transactions`).push(logEntry);
 
                         if (bonusCreditedThisTime) {
                             await database.ref(`users/${currentUser.uid}/transactions`).push({
-                                type: 'bonus_credit',
-                                amount: bonusAmountToCredit,
-                                description: 'Registration Bonus Credited',
-                                date: new Date().toISOString()
+                                type: 'bonus_credit', amount: bonusAmountToCredit,
+                                description: 'Registration Bonus Credited', date: new Date().toISOString()
                             });
                             showNotification(`Your ${bonusAmountToCredit} PKR registration bonus has been credited to your earnings!`, 'success', 7000);
                         }
 
-                        if (userData.referredByUid && !userData.hasPurchasedFirstPlan) { // Award commission only on first purchase by referred user
+                        if (userData.referredByUid && !userData.hasPurchasedFirstPlan) {
                             await awardReferralCommission(userData.referredByUid, planAmount, currentUser.uid, userData.name);
                         }
 
                         showNotification(`${getPlanName(planAmount)} purchased! Daily earnings: ${(planAmount * 0.25).toFixed(2)} Rs.`, 'success');
-
-                        refreshUserBalance(); // Explicitly refresh data to reflect all changes
+                        refreshUserBalance();
                     } catch (error) {
                         showNotification(`Purchase error: ${error.message}`, 'error');
                         refreshUserBalance();
@@ -4290,8 +4272,7 @@
             const referrerRef = database.ref(`users/${referrerUid}`);
             const referrerSnapshot = await referrerRef.once('value');
             if (!referrerSnapshot.exists()) {
-                console.error("Referrer not found:", referrerUid);
-                return;
+                console.error("Referrer not found:", referrerUid); return;
             }
             const referrerData = referrerSnapshot.val();
 
@@ -4306,17 +4287,12 @@
             await referrerRef.update(updates);
 
             await database.ref(`users/${referrerUid}/referralHistory`).push({
-                type: 'commission',
-                amount: commissionAmount,
-                referredUserId: referredUserId,
-                referredUserName: referredUserName,
-                planPurchased: planAmount,
-                date: new Date().toISOString(),
-                status: 'credited'
+                type: 'commission', amount: commissionAmount,
+                referredUserId: referredUserId, referredUserName: referredUserName,
+                planPurchased: planAmount, date: new Date().toISOString(), status: 'credited'
             });
 
             await checkAndApplyReferralMilestones(referrerUid);
-
             console.log(`Commission of ${commissionAmount.toFixed(2)} Rs awarded to referrer ${referrerUid}`);
         }
 
@@ -4335,19 +4311,16 @@
                     !(referrerData.achievedMilestones && referrerData.achievedMilestones[milestone.id + '_rewarded'])) {
 
                     const updates = {
-                        earnings: (referrerData.earnings || 0) + milestone.rewardAmount, // Add to withdrawable earnings
-                        referralLevel: milestone.name, // Update referral level display name
-                        [`achievedMilestones/${milestone.id}_rewarded`]: true // Mark as rewarded
+                        earnings: (referrerData.earnings || 0) + milestone.rewardAmount,
+                        referralLevel: milestone.name,
+                        [`achievedMilestones/${milestone.id}_rewarded`]: true
                     };
                     await referrerRef.update(updates);
-                    newLevel = milestone.name; // For subsequent checks in this loop if any
+                    newLevel = milestone.name;
 
                     await database.ref(`users/${referrerUid}/referralHistory`).push({
-                        type: 'milestone_reward',
-                        amount: milestone.rewardAmount,
-                        milestoneName: milestone.name,
-                        date: new Date().toISOString(),
-                        status: 'credited'
+                        type: 'milestone_reward', amount: milestone.rewardAmount,
+                        milestoneName: milestone.name, date: new Date().toISOString(), status: 'credited'
                     });
                     milestoneRewardApplied = true;
                     if (currentUser && currentUser.uid === referrerUid) {
@@ -4373,16 +4346,11 @@
             const originalPlanEndDate = userData.originalPlanEndDate ? new Date(userData.originalPlanEndDate) : null;
             const originalPlanAmount = userData.originalPlanAmount || 0;
 
-            // 1. Check for Principal Return (if plan term is over and principal not yet returned)
             if (originalPlanEndDate && now > originalPlanEndDate && !userData.principalReturned && originalPlanAmount > 0) {
                 const updates = {
                     balance: (userData.balance || 0) + originalPlanAmount,
                     principalReturned: true,
-                    // Optionally clear plan-specific fields now that it's fully concluded
-                    // activePlan: null, planStartDate: null, originalPlanEndDate: null, originalPlanAmount: null, planCancelledDate: null
-                    // For simplicity, let's keep them for record unless they cause issues.
-                    // activePlan would already be null if it was cancelled. If it ran its term, it might still hold the value.
-                    activePlan: null // Ensure activePlan is null after principal return
+                    activePlan: null
                 };
                 database.ref('users/' + currentUser.uid).update(updates)
                     .then(() => {
@@ -4392,19 +4360,17 @@
                             date: now.toISOString()
                         });
                         showNotification(`Your ${getPlanName(originalPlanAmount)} plan has completed! ${originalPlanAmount} Rs principal returned.`, 'success');
-                        refreshUserBalance(); // Refresh data and UI
+                        refreshUserBalance();
                     }).catch(err => console.error("Error finalizing plan completion:", err));
-                return; // Stop further processing for this cycle if principal was just returned
+                return;
             }
 
-            // 2. Check if earnings should accrue (plan active, not cancelled, term not over)
             if (userData.activePlan && !userData.planCancelledDate && originalPlanEndDate && now <= originalPlanEndDate) {
-                const planAmount = userData.activePlan; // This is the current active plan amount
+                const planAmount = userData.activePlan;
                 const lastUpdate = userData.lastEarningsUpdate ? new Date(userData.lastEarningsUpdate) : new Date(userData.planStartDate);
                 const hoursPassedSinceLastUpdate = Math.max(0, (now - lastUpdate) / (1000 * 60 * 60));
-                const hourlyEarningsRate = (planAmount * 0.25) / 24; // 25% daily
+                const hourlyEarningsRate = (planAmount * 0.25) / 24;
 
-                // Catch-up for missed earnings
                 if (hoursPassedSinceLastUpdate >= 1) {
                     const missedEarnings = hourlyEarningsRate * Math.floor(hoursPassedSinceLastUpdate);
                     if (missedEarnings > 0.01) {
@@ -4419,7 +4385,6 @@
                         database.ref('users/' + currentUser.uid).update(earningsUpdate)
                             .then(() => {
                                 console.log("Missed earnings updated.");
-                                // Manually update local userData for immediate UI reflection if needed, or rely on 'on' listener
                                 userData.earnings = (userData.earnings || 0) + missedEarnings;
                                 userData.lastEarningsUpdate = now.toISOString();
                                 updateBalanceDisplay();
@@ -4428,9 +4393,7 @@
                     }
                 }
 
-                // Regular hourly interval for future earnings
                 earningsInterval = setInterval(() => {
-                    // Re-check conditions inside interval as userData might change due to cancellation or data refresh
                     if (!currentUser || !userData || !userData.activePlan || userData.planCancelledDate) {
                         clearInterval(earningsInterval);
                         console.log("Earnings interval cleared: Plan no longer active or cancelled.");
@@ -4443,7 +4406,6 @@
                     if (currentOriginalPlanEndDate && currentIntervalNow > currentOriginalPlanEndDate) {
                         clearInterval(earningsInterval);
                         console.log("Plan term ended during interval. Principal return will be handled by main check.");
-                        // Trigger a refresh to ensure the main startEarningsCalculation logic runs for principal return.
                         refreshUserBalance();
                         return;
                     }
@@ -4463,14 +4425,13 @@
                     database.ref('users/' + currentUser.uid).update(updateData)
                         .catch(err => console.error("Error updating hourly earnings:", err));
 
-                    // Update local userData for UI consistency
                      if(userData) {
                         userData.earnings = (userData.earnings || 0) + currentHourlyRate;
                         userData.lastEarningsUpdate = currentIntervalNow.toISOString();
                         updateBalanceDisplay();
                      }
 
-                }, 3600000); // 1 hour
+                }, 3600000);
             } else if (userData.planCancelledDate) {
                 console.log("Plan is cancelled. No earnings will accrue. Waiting for original term end for principal return.");
             } else {
@@ -4482,7 +4443,6 @@
             if (!activePlanManagementDiv || !manageActivePlanNameEl || !manageActivePlanEndDateEl) return;
 
             if (userData && userData.activePlan && !userData.planCancelledDate) {
-                // Plan is active and not cancelled
                 manageActivePlanNameEl.textContent = `${getPlanName(userData.activePlan)} (${userData.activePlan} Rs)`;
                 manageActivePlanEndDateEl.textContent = userData.originalPlanEndDate ? formatDate(userData.originalPlanEndDate, false) : 'N/A';
                 activePlanManagementDiv.classList.remove('hidden');
@@ -4491,15 +4451,13 @@
                 if (btnText) btnText.textContent = "Cancel Current Plan";
 
             } else if (userData && userData.originalPlanAmount && userData.planCancelledDate && !userData.principalReturned) {
-                // Plan was cancelled, principal not yet returned
                 manageActivePlanNameEl.textContent = `${getPlanName(userData.originalPlanAmount)} (${userData.originalPlanAmount} Rs) - Cancelled`;
                 manageActivePlanEndDateEl.textContent = `Principal returns on: ${userData.originalPlanEndDate ? formatDate(userData.originalPlanEndDate, false) : 'N/A'}`;
                 activePlanManagementDiv.classList.remove('hidden');
-                deletePlanBtn.disabled = true; // Cannot cancel an already cancelled plan
+                deletePlanBtn.disabled = true;
                  const btnText = deletePlanBtn.querySelector('.btn-text');
                 if (btnText) btnText.textContent = "Plan Cancelled";
             } else {
-                // No active plan, or plan fully concluded (principal returned)
                 activePlanManagementDiv.classList.add('hidden');
             }
         }
@@ -4518,33 +4476,30 @@
                 async () => {
                     showLoadingButton(buttonElement, true);
                     const updates = {
-                        activePlan: null, // Marks plan as no longer generating daily income
+                        activePlan: null,
                         planCancelledDate: new Date().toISOString(),
-                        lastEarningsUpdate: new Date().toISOString() // Record time earnings stopped
-                        // originalPlanAmount, planStartDate, originalPlanEndDate, principalReturned remain for later processing
+                        lastEarningsUpdate: new Date().toISOString()
                     };
 
                     try {
                         await database.ref('users/' + currentUser.uid).update(updates);
-                        if (earningsInterval) clearInterval(earningsInterval); // Stop earnings interval immediately
+                        if (earningsInterval) clearInterval(earningsInterval);
 
                         await database.ref(`users/${currentUser.uid}/transactions`).push({
-                            type: 'plan_cancellation',
-                            amount: userData.activePlan, // The amount of the plan being cancelled
-                            planName: getPlanName(userData.activePlan),
-                            date: new Date().toISOString(),
+                            type: 'plan_cancellation', amount: userData.activePlan,
+                            planName: getPlanName(userData.activePlan), date: new Date().toISOString(),
                             description: 'User cancelled active plan.'
                         });
 
                         showNotification('Your active plan has been cancelled. Future earnings will stop.', 'success');
-                        refreshUserBalance(); // Refresh data and UI
+                        refreshUserBalance();
                     } catch (error) {
                         showNotification(`Error cancelling plan: ${error.message}`, 'error');
                     } finally {
                         showLoadingButton(buttonElement, false, "Cancel Current Plan");
                     }
                 },
-                'danger' // Modal type for cancellation
+                'danger'
             );
         }
 
@@ -4562,16 +4517,12 @@
                 card.addEventListener('click', function() {
                     methodCards.forEach(c => c.classList.remove('active'));
                     this.classList.add('active');
-                    // Update account details based on selected method
-                    // For now, only Easypaisa is hardcoded
                     if (this.dataset.method === 'easypaisa') {
                         document.getElementById('deposit-account-number').textContent = '03709912807';
                         document.getElementById('deposit-account-name').textContent = 'Memoona zohra';
                     }
-                    // else if (this.dataset.method === 'jazzcash') { ... }
                 });
             });
-            // Click the default (Easypaisa) card on page load
             const easypaisaCard = document.querySelector('#deposit-page .method-card[data-method="easypaisa"]');
             if (easypaisaCard) easypaisaCard.click();
         }
@@ -4603,35 +4554,34 @@
                 userId: currentUser.uid, userName: userData.name, userEmail: currentUser.email,
                 amount: amount, method: method,
                 transactionId: transactionId, senderNumber: senderNumber,
-                date: new Date().toISOString(), status: 'pending', screenshotUrl: null // Placeholder for screenshot
+                date: new Date().toISOString(), status: 'pending', screenshotUrl: null
             };
 
             const depositKey = database.ref(`users/${currentUser.uid}/deposits`).push().key;
             database.ref(`users/${currentUser.uid}/deposits/${depositKey}`).set({...depositData, id: depositKey})
             .then(() => {
-                // Also add to an admin queue for approval
                 return database.ref(`admin/pending_deposits/${depositKey}`).set({...depositData, userUid: currentUser.uid, depositId: depositKey });
             })
             .then(() => {
                 showNotification('Deposit request submitted! Processing takes 5-15 mins.', 'success');
-                document.getElementById('deposit-form-element').reset(); // Reset the form
+                document.getElementById('deposit-form-element').reset();
                 document.getElementById('custom-amount-container').classList.add('hidden');
                 document.getElementById('file-name').textContent = 'No file chosen';
                 document.getElementById('screenshot-preview').innerHTML = '<p>No image selected.</p>';
-                if(document.getElementById('deposit-screenshot')) document.getElementById('deposit-screenshot').value = ''; // Clear file input
+                if(document.getElementById('deposit-screenshot')) document.getElementById('deposit-screenshot').value = '';
             })
             .catch(error => showNotification(`Deposit error: ${error.message}`, 'error'))
             .finally(() => showLoadingButton(submitDepositBtn, false, "Submit Deposit"));
         }
 
         function initWithdrawPage() {
-            if (userData) updateBalanceDisplay(); // Ensure balance is current when page loads
+            if (userData) updateBalanceDisplay();
         }
         function initAmountButtons() {
             const withdrawAmountInput = document.getElementById('withdraw-amount');
             document.querySelectorAll('#withdraw-page .amount-btn').forEach(button => {
                 button.addEventListener('click', function(e) {
-                    e.preventDefault(); // Prevent any default form action if inside a form
+                    e.preventDefault();
                     if(withdrawAmountInput) withdrawAmountInput.value = this.dataset.amount;
                 });
             });
@@ -4646,20 +4596,19 @@
             if (!method || !account || !name || !amount || isNaN(amount)) {
                 showNotification('Please fill all fields correctly.', 'error'); return;
             }
-            if (!/^\d{11}$/.test(account)) { // Basic 11-digit validation
+            if (!/^\d{11}$/.test(account)) {
                 showNotification('Account number must be 11 digits.', 'error'); return;
             }
             if (amount < 200 || amount > 20000) {
                 showNotification('Withdrawal amount must be between 200 and 20,000 Rs.', 'error'); return;
             }
 
-            // Withdraw from combined earnings and balance
             const totalAvailableBalance = (userData.balance || 0) + (userData.earnings || 0);
             if (amount > totalAvailableBalance) {
                 showNotification('Insufficient funds for withdrawal.', 'error'); return;
             }
 
-            const feeAmount = amount * 0.05; // 5% fee
+            const feeAmount = amount * 0.05;
             const netAmountToReceive = amount - feeAmount;
 
             const withdrawalData = {
@@ -4672,7 +4621,7 @@
             showConfirmationModal(
                 'Confirm Withdrawal',
                 `Withdraw ${amount.toFixed(2)} Rs to ${account} (${method})? Fee: ${feeAmount.toFixed(2)} Rs. You receive: ${netAmountToReceive.toFixed(2)} Rs.`,
-                async () => { // Make callback async
+                async () => {
                     const submitWithdrawBtn = document.getElementById('submit-withdraw');
                     showLoadingButton(submitWithdrawBtn, true);
 
@@ -4681,7 +4630,6 @@
                     let amountDeductedFromEarnings = 0;
                     let amountDeductedFromBalance = 0;
 
-                    // Deduct from earnings first, then balance
                     if (newEarnings >= amount) {
                         amountDeductedFromEarnings = amount;
                         newEarnings -= amount;
@@ -4694,10 +4642,8 @@
                     }
 
                     try {
-                        // Update earnings and balance first
                         await database.ref('users/' + currentUser.uid).update({ earnings: newEarnings, balance: newBalance });
 
-                        // Then record the withdrawal request
                         const withdrawalKey = database.ref(`users/${currentUser.uid}/withdrawals`).push().key;
                         await database.ref(`users/${currentUser.uid}/withdrawals/${withdrawalKey}`).set({...withdrawalData, id: withdrawalKey});
                         await database.ref(`admin/pending_withdrawals/${withdrawalKey}`).set({...withdrawalData, userUid: currentUser.uid, withdrawalId: withdrawalKey });
@@ -4707,7 +4653,6 @@
                         }
 
                         showNotification('Withdrawal request submitted!', 'success');
-
                         document.getElementById('withdraw-form-element').reset();
                         refreshUserBalance();
                     } catch (error) {
@@ -4716,7 +4661,7 @@
                     } finally {
                         showLoadingButton(submitWithdrawBtn, false, "Request Withdrawal");
                     }
-                }, 'warning' // Modal type
+                }, 'warning'
             );
         }
 
@@ -4726,38 +4671,37 @@
             if (copyButton && inviteCodeInput) {
                 copyButton.addEventListener('click', () => {
                     inviteCodeInput.select();
-                    inviteCodeInput.setSelectionRange(0, 99999); // For mobile devices
+                    inviteCodeInput.setSelectionRange(0, 99999);
                     try {
                         document.execCommand('copy');
                         showNotification('Invite code copied!', 'success');
                     } catch (err) {
-                        // Fallback for browsers that don't support execCommand or if it fails
                         navigator.clipboard.writeText(inviteCodeInput.value)
                             .then(() => showNotification('Invite code copied!', 'success'))
                             .catch(() => showNotification('Failed to copy code.', 'error'));
                     }
-                    window.getSelection().removeAllRanges(); // Deselect
+                    window.getSelection().removeAllRanges();
                 });
             }
         }
         function initShareButtons() {
             const inviteCodeEl = document.getElementById('invite-code');
-            // Assuming the app is hosted at the root. Adjust if it's in a subdirectory.
-            const baseAppUrl = window.location.origin + window.location.pathname.replace('index.html', '');
+            const baseAppUrl = window.location.href.split('?')[0]; // Get URL without existing query params
 
             document.querySelector('.share-btn.whatsapp')?.addEventListener('click', () => {
-                const code = inviteCodeEl ? inviteCodeEl.value : (currentUser?.uid.slice(0,8).toUpperCase() || "DEMOCODE");
-                const msg = `Join Video Treasure Pro with my invite code: ${code} and earn daily! Sign up: ${baseAppUrl}?ref=${code}`;
+                const code = inviteCodeEl ? inviteCodeEl.value : (userData?.inviteCode || currentUser?.uid.slice(0,8).toUpperCase() || "DEMOCODE");
+                const referralLink = `${baseAppUrl}?ref=${code}`;
+                const msg = `Join Video Treasure Pro with my invite code: ${code} and earn daily! Sign up: ${referralLink}`;
                 window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
             });
             document.querySelector('.share-btn.facebook')?.addEventListener('click', () => {
-                const code = inviteCodeEl ? inviteCodeEl.value : (currentUser?.uid.slice(0,8).toUpperCase() || "DEMOCODE");
-                const link = `${baseAppUrl}?ref=${code}`;
+                const code = inviteCodeEl ? inviteCodeEl.value : (userData?.inviteCode || currentUser?.uid.slice(0,8).toUpperCase() || "DEMOCODE");
+                const referralLink = `${baseAppUrl}?ref=${code}`;
                 const msg = `Join Video Treasure Pro with my invite code: ${code} and start earning! Check out this awesome platform.`;
-                window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}&quote=${encodeURIComponent(msg)}`, '_blank');
+                window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralLink)}&quote=${encodeURIComponent(msg)}`, '_blank');
             });
             document.querySelector('.share-btn.copy-link')?.addEventListener('click', () => {
-                const code = inviteCodeEl ? inviteCodeEl.value : (currentUser?.uid.slice(0,8).toUpperCase() || "DEMOCODE");
+                const code = inviteCodeEl ? inviteCodeEl.value : (userData?.inviteCode || currentUser?.uid.slice(0,8).toUpperCase() || "DEMOCODE");
                 const referralLink = `${baseAppUrl}?ref=${code}`;
                 navigator.clipboard.writeText(referralLink)
                     .then(() => showNotification('Referral link copied!', 'success'))
@@ -4783,8 +4727,8 @@
         }
 
         function initTeamPage() {
-            loadReferralHistory(); // Load commission history
-            updateReferralMilestonesUI(); // Display current milestone status
+            loadReferralHistory();
+            updateReferralMilestonesUI();
         }
 
         function updateReferralMilestonesUI() {
@@ -4793,29 +4737,28 @@
                  return;
             }
 
-            milestonesListEl.innerHTML = ''; // Clear previous list
+            milestonesListEl.innerHTML = '';
             const currentReferrals = userData.investingReferralsCount || 0;
             let nextMilestone = null;
             let achievedAll = true;
-            let lastAchievedMilestoneReferrals = 0; // Referrals needed for the previously achieved/lower milestone
+            let lastAchievedMilestoneReferrals = 0;
 
             referralMilestonesConfig.forEach(milestone => {
                 const li = document.createElement('li');
                 const isAchieved = userData.achievedMilestones && userData.achievedMilestones[milestone.id + '_rewarded'];
-
                 let statusHtml = '';
                 if (isAchieved) {
                     statusHtml = `<span class="status-completed">Achieved! +${milestone.rewardAmount} Rs</span>`;
                     lastAchievedMilestoneReferrals = milestone.requiredReferrals;
                 } else {
-                    achievedAll = false; // If any milestone is not achieved
+                    achievedAll = false;
                     const needed = milestone.requiredReferrals - currentReferrals;
                     if (needed > 0) {
                         statusHtml = `<span class="status-pending">${needed} more needed</span>`;
-                    } else { // Current referrals >= required, but not yet marked as rewarded (should be auto-claimed by backend logic)
+                    } else {
                         statusHtml = `<span class="status-pending">Pending claim...</span>`;
                     }
-                    if (!nextMilestone) { // This is the next unachieved milestone
+                    if (!nextMilestone) {
                         nextMilestone = milestone;
                     }
                 }
@@ -4828,7 +4771,6 @@
                 milestoneProgressBarEl.style.width = '100%';
                 milestoneProgressBarEl.textContent = '100%';
             } else if (nextMilestone) {
-                // Find the milestone just before the nextMilestone for progress calculation
                 let prevMilestoneReq = 0;
                 for (let i = 0; i < referralMilestonesConfig.length; i++) {
                     if (referralMilestonesConfig[i].id === nextMilestone.id && i > 0) {
@@ -4836,17 +4778,15 @@
                         break;
                     }
                 }
-
                 const progressCurrentTierTotal = nextMilestone.requiredReferrals - prevMilestoneReq;
                 const progressInCurrentTier = Math.max(0, currentReferrals - prevMilestoneReq);
                 const percentage = progressCurrentTierTotal > 0
                                    ? Math.min(100, (progressInCurrentTier / progressCurrentTierTotal) * 100)
                                    : (currentReferrals >= nextMilestone.requiredReferrals ? 100 : 0);
-
                 nextMilestoneInfoEl.textContent = `Next: ${nextMilestone.name} (${nextMilestone.requiredReferrals} Referrals for ${nextMilestone.rewardAmount} Rs reward)`;
                 milestoneProgressBarEl.style.width = `${percentage.toFixed(0)}%`;
                 milestoneProgressBarEl.textContent = `${percentage.toFixed(0)}%`;
-            } else { // No milestones defined or other edge case
+            } else {
                  nextMilestoneInfoEl.textContent = "Start referring to unlock milestones!";
                  milestoneProgressBarEl.style.width = '0%';
                  milestoneProgressBarEl.textContent = '0%';
@@ -4856,52 +4796,32 @@
 
         function loadUserRankings() {
             showLoading();
-            // Fetch users, order by activePlan (desc), then by total earnings (desc) as secondary sort.
-            // Firebase RTDB doesn't support compound sorting directly on server.
-            // We fetch ordered by primary key and sort client-side.
-            database.ref('users').orderByChild('activePlan').limitToLast(50).once('value') // Get more to sort client-side
+            database.ref('users').orderByChild('activePlan').limitToLast(50).once('value')
                 .then(snapshot => {
                     const rankings = [];
                     snapshot.forEach(userSnapshot => {
                         const user = userSnapshot.val();
-                        // Ensure user has a name and an active plan to be in ranking
                         if (user.name && user.activePlan && user.activePlan > 0) {
                             rankings.push({
-                                id: userSnapshot.key,
-                                name: user.name,
-                                investment: user.activePlan,
-                                // Consider total earnings from plan and referrals for ranking tie-breaking
+                                id: userSnapshot.key, name: user.name, investment: user.activePlan,
                                 earnings: (user.earnings || 0) + (user.referralCommissionTotal || 0)
                             });
                         }
                     });
-                    // Sort: Primary by investment (desc), secondary by earnings (desc)
                     rankings.sort((a, b) => {
-                        if (b.investment !== a.investment) {
-                            return b.investment - a.investment;
-                        }
+                        if (b.investment !== a.investment) return b.investment - a.investment;
                         return b.earnings - a.earnings;
                     });
-
                     const rankingBody = document.getElementById('ranking-body');
-                    if (!rankingBody) { hideLoading(); return; } // Safety check
-                    rankingBody.innerHTML = ''; // Clear previous entries
-
+                    if (!rankingBody) { hideLoading(); return; }
+                    rankingBody.innerHTML = '';
                     if (rankings.length === 0) {
                         rankingBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No active investors to rank.</td></tr>';
                     } else {
-                        // Display top N (e.g., top 10 or 20)
                         rankings.slice(0, 20).forEach((user, index) => {
                             const row = document.createElement('tr');
-                            if (currentUser && user.id === currentUser.uid) {
-                                row.classList.add('current-user'); // Highlight current user
-                            }
-                            row.innerHTML = `
-                                <td>${index + 1}</td>
-                                <td>${user.name}</td>
-                                <td>${user.investment.toFixed(0)} Rs</td>
-                                <td>${user.earnings.toFixed(2)} Rs</td>
-                            `;
+                            if (currentUser && user.id === currentUser.uid) row.classList.add('current-user');
+                            row.innerHTML = `<td>${index + 1}</td><td>${user.name}</td><td>${user.investment.toFixed(0)} Rs</td><td>${user.earnings.toFixed(2)} Rs</td>`;
                             rankingBody.appendChild(row);
                         });
                     }
@@ -4927,13 +4847,7 @@
             } else {
                 filtered.forEach(d => {
                     const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${d.amount.toFixed(2)} Rs</td>
-                        <td>${d.method || 'N/A'}</td>
-                        <td>${formatDate(d.date)}</td>
-                        <td><span class="status-${d.status}">${d.status}</span></td>
-                        <td>${d.status === 'pending' ? `<span class="action-link" data-id="${d.id}" data-type="deposit">Cancel</span>` : (d.status === 'rejected' && d.adminNotes ? `<span title="${d.adminNotes}"><i class="fas fa-info-circle"></i></span>` : '--')}</td>
-                    `;
+                    row.innerHTML = `<td>${d.amount.toFixed(2)} Rs</td><td>${d.method || 'N/A'}</td><td>${formatDate(d.date)}</td><td><span class="status-${d.status}">${d.status}</span></td><td>${d.status === 'pending' ? `<span class="action-link" data-id="${d.id}" data-type="deposit">Cancel</span>` : (d.status === 'rejected' && d.adminNotes ? `<span title="${d.adminNotes}"><i class="fas fa-info-circle"></i></span>` : '--')}</td>`;
                     body.appendChild(row);
                 });
             }
@@ -4965,13 +4879,7 @@
             } else {
                 filtered.forEach(w => {
                     const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${w.requestedAmount.toFixed(2)} Rs</td>
-                        <td>${w.method || 'N/A'} (${w.account})</td>
-                        <td>${formatDate(w.date)}</td>
-                        <td><span class="status-${w.status}">${w.status}</span></td>
-                        <td>${w.status === 'pending' ? `<span class="action-link" data-id="${w.id}" data-type="withdrawal" data-amount="${w.requestedAmount}">Cancel</span>` : (w.status === 'rejected' && w.adminNotes ? `<span title="${w.adminNotes}"><i class="fas fa-info-circle"></i></span>` : '--')}</td>
-                    `;
+                    row.innerHTML = `<td>${w.requestedAmount.toFixed(2)} Rs</td><td>${w.method || 'N/A'} (${w.account})</td><td>${formatDate(w.date)}</td><td><span class="status-${w.status}">${w.status}</span></td><td>${w.status === 'pending' ? `<span class="action-link" data-id="${w.id}" data-type="withdrawal" data-amount="${w.requestedAmount}">Cancel</span>` : (w.status === 'rejected' && w.adminNotes ? `<span title="${w.adminNotes}"><i class="fas fa-info-circle"></i></span>` : '--')}</td>`;
                     body.appendChild(row);
                 });
             }
@@ -4987,7 +4895,6 @@
         }
         function attachCancelListeners(tableBody, type) {
             tableBody.querySelectorAll('.action-link[data-type="' + type + '"]').forEach(link => {
-                // Remove old listener if any to prevent multiple fires
                 const newLink = link.cloneNode(true);
                 link.parentNode.replaceChild(newLink, link);
                 newLink.addEventListener('click', function() {
@@ -5000,27 +4907,24 @@
             showConfirmationModal(
                 `Cancel ${CType}`,
                 `Are you sure you want to cancel this ${type} request? ${type==='withdrawal' && amountToRefund > 0 ?'The amount will be refunded to your earnings balance.':''}`,
-                async () => { // Make callback async
+                async () => {
                     showLoading();
                     const userTransactionPath = `users/${currentUser.uid}/${type}s/${id}`;
-                    const adminQueuePath = `admin/pending_${type}s/${id}`; // Path in admin queue
+                    const adminQueuePath = `admin/pending_${type}s/${id}`;
 
                     try {
                         await database.ref(userTransactionPath).update({ status: 'cancelled', cancelledBy: 'user' });
-                        // Update status in admin queue as well, or remove it. For simplicity, update status.
                         await database.ref(adminQueuePath).update({ status: 'cancelled_by_user' });
 
                         if (type === 'withdrawal' && amountToRefund > 0) {
-                            // Refund to earnings as it's the main source of withdrawable funds
                             await database.ref(`users/${currentUser.uid}`).update({
                                 earnings: (userData.earnings || 0) + amountToRefund
                             });
                         }
                         showNotification(`${CType} request cancelled successfully.`, 'success');
-                        // Refresh history and balance
                         if(type === 'deposit') loadDepositHistory();
                         else loadWithdrawHistory();
-                        refreshUserBalance(); // This will re-fetch data and update UI
+                        refreshUserBalance();
                     } catch (error) {
                          showNotification(`Error cancelling ${type}: ${error.message}`, 'error');
                     } finally {
@@ -5037,7 +4941,6 @@
                 body.innerHTML = '<tr><td colspan="5" style="text-align:center;">No referral commission history.</td></tr>';
                 return;
             }
-            // Filter only for 'commission' type entries for this specific table
             const commissionEntries = Object.values(userData.referralHistory)
                                           .filter(entry => entry.type === 'commission')
                                           .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -5047,13 +4950,7 @@
             } else {
                 commissionEntries.forEach(ref => {
                     const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${ref.referredUserName || 'Referred User'}</td>
-                        <td>${ref.planPurchased ? getPlanName(ref.planPurchased) + ` (${ref.planPurchased} Rs)` : 'N/A'}</td>
-                        <td>${ref.amount.toFixed(2)} Rs</td>
-                        <td>${formatDate(ref.date)}</td>
-                        <td><span class="status-${ref.status || 'credited'}">${ref.status || 'Credited'}</span></td>
-                    `;
+                    row.innerHTML = `<td>${ref.referredUserName || 'Referred User'}</td><td>${ref.planPurchased ? getPlanName(ref.planPurchased) + ` (${ref.planPurchased} Rs)` : 'N/A'}</td><td>${ref.amount.toFixed(2)} Rs</td><td>${formatDate(ref.date)}</td><td><span class="status-${ref.status || 'credited'}">${ref.status || 'Credited'}</span></td>`;
                     body.appendChild(row);
                 });
             }
@@ -5061,7 +4958,7 @@
 
         function initEarningsPage() {
             loadEarningsHistory();
-            if (!earningsChartInstance) setupEarningsChart(); // Setup chart only if not already initialized
+            if (!earningsChartInstance) setupEarningsChart();
         }
         function loadEarningsHistory() {
             const body = document.getElementById('earnings-body');
@@ -5072,32 +4969,20 @@
             }
             const period = document.getElementById('earnings-period')?.value || 'all';
             const entries = [];
-            // Consolidate all types of earnings
-            if (userData.earningsHistory) { // Plan earnings
+            if (userData.earningsHistory) {
                 Object.values(userData.earningsHistory).forEach(e => entries.push({
-                    date: e.date,
-                    type: 'Investment',
-                    amount: e.amount,
+                    date: e.date, type: 'Investment', amount: e.amount,
                     description: `From ${e.plan ? getPlanName(e.plan) : 'Active Plan'}`
                 }));
             }
-            if (userData.referralHistory) { // Referral commissions and milestone rewards
+            if (userData.referralHistory) {
                 Object.values(userData.referralHistory).forEach(e => {
-                    let entryType = 'Unknown';
-                    let description = '';
-                    if (e.type === 'commission') {
-                        entryType = 'Referral';
-                        description = `Commission from ${e.referredUserName || 'referral'}`;
-                    } else if (e.type === 'milestone_reward') {
-                        entryType = 'Milestone';
-                        description = `Milestone: ${e.milestoneName || 'Reward'}`;
-                    }
-                    if (entryType !== 'Unknown') {
-                        entries.push({ date: e.date, type: entryType, amount: e.amount, description: description });
-                    }
+                    let entryType = 'Unknown', description = '';
+                    if (e.type === 'commission') { entryType = 'Referral'; description = `Commission from ${e.referredUserName || 'referral'}`; }
+                    else if (e.type === 'milestone_reward') { entryType = 'Milestone'; description = `Milestone: ${e.milestoneName || 'Reward'}`; }
+                    if (entryType !== 'Unknown') entries.push({ date: e.date, type: entryType, amount: e.amount, description: description });
                 });
             }
-            // Add registration bonus if credited and logged in transactions
             if(userData.transactions){
                 Object.values(userData.transactions).forEach(tx => {
                     if(tx.type === 'bonus_credit' && tx.description === 'Registration Bonus Credited') {
@@ -5106,16 +4991,15 @@
                 });
             }
 
-
             entries.sort((a,b) => new Date(b.date) - new Date(a.date));
             const now = new Date();
             const filtered = entries.filter(e => {
-                if (!e.date) return false; // Skip entries without a date
+                if (!e.date) return false;
                 const d = new Date(e.date);
                 if (period === 'today') return d.toDateString() === now.toDateString();
                 if (period === 'week') {
                     const weekStart = new Date(now);
-                    weekStart.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1)); // Monday as start of week
+                    weekStart.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1));
                     weekStart.setHours(0,0,0,0);
                     const weekEnd = new Date(weekStart);
                     weekEnd.setDate(weekStart.getDate() + 6);
@@ -5123,7 +5007,7 @@
                     return d >= weekStart && d <= weekEnd;
                 }
                 if (period === 'month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-                return true; // 'all' period
+                return true;
             });
 
             let totalAllTimeEarnings=0, todayTotalEarnings=0, totalReferralAndBonusEarnings=0;
@@ -5138,15 +5022,9 @@
             if (filtered.length === 0) {
                 body.innerHTML = `<tr><td colspan="4" style="text-align:center;">No earnings for this period.</td></tr>`;
             } else {
-                // Display limited entries for performance, e.g., latest 50
                 filtered.slice(0,50).forEach(e => {
                     const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${formatDate(e.date)}</td>
-                        <td><span class="badge ${e.type.toLowerCase()}">${e.type}</span></td>
-                        <td>${e.amount.toFixed(2)} Rs</td>
-                        <td>${e.description}</td>
-                    `;
+                    row.innerHTML = `<td>${formatDate(e.date)}</td><td><span class="badge ${e.type.toLowerCase()}">${e.type}</span></td><td>${e.amount.toFixed(2)} Rs</td><td>${e.description}</td>`;
                     body.appendChild(row);
                 });
             }
@@ -5160,43 +5038,24 @@
         function setupEarningsChart() {
             const ctx = document.getElementById('earnings-chart')?.getContext('2d');
             if (!ctx) return;
-            if (earningsChartInstance) earningsChartInstance.destroy(); // Destroy old chart if exists
+            if (earningsChartInstance) earningsChartInstance.destroy();
 
-            Chart.defaults.color = 'var(--text-gray)'; // Default text color for chart elements
-            Chart.defaults.borderColor = 'var(--border-color)'; // Default border color for chart lines/grids
+            Chart.defaults.color = 'var(--text-gray)';
+            Chart.defaults.borderColor = 'var(--border-color)';
 
             earningsChartInstance = new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Daily Earnings',
-                        data: [],
-                        borderColor: 'var(--primary-color)',
-                        backgroundColor: 'rgba(var(--primary-rgb-val), 0.1)',
-                        fill: true,
-                        tension: 0.3,
-                        pointBackgroundColor: 'var(--primary-light)',
-                        pointBorderColor: 'var(--primary-color)',
-                        pointRadius: 4,
-                        pointHoverRadius: 6
-                    }]
+                data: { labels: [], datasets: [{
+                        label: 'Daily Earnings', data: [],
+                        borderColor: 'var(--primary-color)', backgroundColor: 'rgba(var(--primary-rgb-val), 0.1)',
+                        fill: true, tension: 0.3, pointBackgroundColor: 'var(--primary-light)',
+                        pointBorderColor: 'var(--primary-color)', pointRadius: 4, pointHoverRadius: 6 }]
                 },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: { display: true, text: 'Amount (Rs)', color: 'var(--text-gray)' },
-                            grid: { color: 'var(--border-color)'},
-                            ticks: { color: 'var(--text-gray)'}
-                        },
-                        x: {
-                            title: { display: true, text: 'Date/Period', color: 'var(--text-gray)' },
-                            grid: { color: 'var(--border-color)'},
-                            ticks: { color: 'var(--text-gray)'}
-                        }
+                        y: { beginAtZero: true, title: { display: true, text: 'Amount (Rs)', color: 'var(--text-gray)' }, grid: { color: 'var(--border-color)'}, ticks: { color: 'var(--text-gray)'}},
+                        x: { title: { display: true, text: 'Date/Period', color: 'var(--text-gray)' }, grid: { color: 'var(--border-color)'}, ticks: { color: 'var(--text-gray)'}}
                     },
                     plugins: {
                         legend: { display: true, position: 'top', labels: { color: 'var(--text-gray)'}},
@@ -5208,36 +5067,25 @@
         function updateChartData(data, period) {
             if (!earningsChartInstance || !data) return;
             let labels = [], points = [];
-
-            // Group data by day for chart
             const dailyAggregatedData = {};
             data.forEach(entry => {
                 if (!entry.date) return;
-                const day = new Date(entry.date).toLocaleDateString('en-CA'); // YYYY-MM-DD for sorting
+                const day = new Date(entry.date).toLocaleDateString('en-CA');
                 dailyAggregatedData[day] = (dailyAggregatedData[day] || 0) + entry.amount;
             });
-
             const sortedDays = Object.keys(dailyAggregatedData).sort((a,b) => new Date(a) - new Date(b));
 
-            if (period === 'today') { // Show hourly if possible, or just the single day's total
-                 if (sortedDays.length === 1) {
-                    labels = [formatDate(sortedDays[0], true)]; // Format as 'Mon DD'
-                    points = [dailyAggregatedData[sortedDays[0]]];
-                 } else { // Fallback for no data or structure for hourly
-                    labels = ['Today'];
-                    points = [sortedDays.reduce((sum, day) => sum + dailyAggregatedData[day], 0)];
-                 }
+            if (period === 'today') {
+                 if (sortedDays.length === 1) { labels = [formatDate(sortedDays[0], true)]; points = [dailyAggregatedData[sortedDays[0]]]; }
+                 else { labels = ['Today']; points = [sortedDays.reduce((sum, day) => sum + dailyAggregatedData[day], 0)]; }
             } else if (period === 'week' || period === 'month' || (period === 'all' && sortedDays.length <= 31)) {
-                // Show daily data points for week, month, or 'all' if not too many days
                 labels = sortedDays.map(day => formatDate(day, true));
                 points = sortedDays.map(day => dailyAggregatedData[day]);
-            } else { // 'all' with many days, might need to aggregate by week or month (simplified for now)
-                // For simplicity, show last 30 days if 'all' has too much data
+            } else {
                 const last30DaysData = sortedDays.slice(-30);
                 labels = last30DaysData.map(day => formatDate(day, true));
                 points = last30DaysData.map(day => dailyAggregatedData[day]);
             }
-
             earningsChartInstance.data.labels = labels;
             earningsChartInstance.data.datasets[0].data = points;
             earningsChartInstance.data.datasets[0].label = period === 'today' ? 'Earnings Today' : 'Daily Earnings';
@@ -5254,11 +5102,8 @@
             if (form) {
                 form.addEventListener('submit', function(e) {
                     e.preventDefault();
-                    const nameInput = this.elements['contact-name'];
-                    const emailInput = this.elements['contact-email'];
-                    const subjectInput = this.elements['contact-subject'];
-                    const messageInput = this.elements['contact-message'];
-
+                    const nameInput = this.elements['contact-name'], emailInput = this.elements['contact-email'],
+                          subjectInput = this.elements['contact-subject'], messageInput = this.elements['contact-message'];
                     const n=nameInput.value.trim(), em=emailInput.value.trim(), s=subjectInput.value.trim(), m=messageInput.value.trim();
                     if (!n||!em||!s||!m) { showNotification('Please fill all fields.', 'error'); return; }
                     if (!validateEmail(em)) { showNotification('Please enter a valid email address.', 'error'); return;}
@@ -5266,51 +5111,39 @@
                     const btn = this.querySelector('.submit-btn');
                     showLoadingButton(btn, true);
                     database.ref('contact_messages').push({
-                        name:n, email:em, subject:s, message:m,
-                        date: new Date().toISOString(),
-                        userId: currentUser?currentUser.uid:'guest',
-                        userName: currentUser? userData.name : 'Guest'
+                        name:n, email:em, subject:s, message:m, date: new Date().toISOString(),
+                        userId: currentUser?currentUser.uid:'guest', userName: currentUser? userData.name : 'Guest'
                     })
-                    .then(() => {
-                        showNotification('Message sent successfully! We will get back to you soon.', 'success');
-                        form.reset();
-                    })
-                    .catch(err => {
-                        showNotification('Failed to send message. Please try again later.', 'error');
-                        console.error("Contact form submission error:", err);
-                    })
+                    .then(() => { showNotification('Message sent successfully! We will get back to you soon.', 'success'); form.reset(); })
+                    .catch(err => { showNotification('Failed to send message. Please try again later.', 'error'); console.error("Contact form submission error:", err); })
                     .finally(() => showLoadingButton(btn, false, "Send Message"));
                 });
             }
         }
         function showConfirmationModal(title, message, confirmCallback, type = 'warning') {
             document.getElementById('modal-title').textContent = title;
-            document.getElementById('modal-message').innerHTML = message; // Use innerHTML for potential formatting in message
+            document.getElementById('modal-message').innerHTML = message;
             const iconContainer = confirmationModalEl.querySelector('.modal-icon');
             iconContainer.querySelectorAll('i').forEach(icon => icon.style.display = 'none');
             const iconShow = iconContainer.querySelector(`i.${type}`);
             if(iconShow) iconShow.style.display = 'block';
 
-            // Change confirm button color based on type
-            modalConfirm.className = 'modal-btn confirm'; // Reset classes
+            modalConfirm.className = 'modal-btn confirm';
             if (type === 'error' || type === 'danger') modalConfirm.classList.add('danger');
             else if (type === 'warning') modalConfirm.classList.add('warning');
-            // 'success' type will use default confirm style
 
             confirmationModalEl.classList.add('active');
             confirmationModalEl.classList.remove('hidden');
 
-            // Re-bind confirm button to avoid multiple listeners from previous calls
             const newConfirmBtn = modalConfirm.cloneNode(true);
             modalConfirm.parentNode.replaceChild(newConfirmBtn, modalConfirm);
-            modalConfirm = newConfirmBtn; // Update reference
+            modalConfirm = newConfirmBtn;
 
             modalConfirm.onclick = () => {
                 confirmationModalEl.classList.remove('active');
                 confirmationModalEl.classList.add('hidden');
                 if (typeof confirmCallback === 'function') confirmCallback();
             };
-            // Ensure cancel button is also fresh or simple
             document.getElementById('modal-cancel').onclick = () => {
                  confirmationModalEl.classList.remove('active');
                  confirmationModalEl.classList.add('hidden');
@@ -5319,10 +5152,9 @@
         function formatDate(dateString, short = false) {
             if (!dateString) return 'N/A';
             const d = new Date(dateString);
-            if (isNaN(d.getTime())) return 'Invalid Date'; // Check if date is valid
-
-            if (short) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); // e.g. "Jul 20"
-            return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); // e.g. "20 Jul 2024, 02:30 PM"
+            if (isNaN(d.getTime())) return 'Invalid Date';
+            if (short) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
         }
 
         document.addEventListener('DOMContentLoaded', init);
